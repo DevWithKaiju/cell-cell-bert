@@ -50,8 +50,9 @@ def run_training(
     warmup_ratio = 0.1,
     batch_size = 16,
     num_train_epochs = 20,
-    weight_decay = 0.01,
+    weight_decay = 1e-4,
     dropout_rate = 0.1,
+    target_epochs = None
 ):
     """
     Executes the full training and evaluation pipeline.
@@ -164,7 +165,6 @@ def run_training(
     log_df.to_csv(os.path.join(output_dir, "training_log.csv"), index=False)
 
     # 5. Evaluation Loop (Target Epochs & Best Model)
-    target_epochs = [3, 5, 10, 20]
     steps_per_epoch = len(tokenized_datasets["train"]) // batch_size
     
     # Find saved checkpoints
