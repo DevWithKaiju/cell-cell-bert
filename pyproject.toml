@@ -1,53 +1,61 @@
-# ===================================================================
-#  ビルドシステムの設定 (dev版から変更なし)
-# ===================================================================
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
-
-# ===================================================================
-#  プロジェクトの基本情報
-# ===================================================================
 [project]
-# プロジェクト名 (src/以下のディレクトリ名と合わせる)
-name = "my_project"
-# 論文投稿時のバージョン (例: 1.0.0)
-version = "1.0.0"
-description = "Source code for the paper: [Paper Title Here]."
+name = "ccbert"
+version = "0.1.0"
+description = "Official repository for the paper: Designing Cell–Cell Relation Extraction Models: A Systematic Evaluation of Entity Representation and Pre-training Strategies"
 readme = "README.md"
-requires-python = ">=3.9"
-authors = [
-  { name="Your Name", email="your.email@example.com" },
-]
-# ### <<< 変更: LICENSEファイルを指定
-license = { file="LICENSE" }
-
-
-# -------------------------------------------------------------------
-#  依存ライブラリ
-# -------------------------------------------------------------------
-# 論文の結果を再現するための必須ライブラリ。
-# 再現性を厳密にするため "torch==2.0.1" のようにバージョンを固定することを推奨。
+requires-python = ">=3.12"
 dependencies = [
-    "numpy",
-    "pandas",
-    "scikit-learn",
-    "matplotlib",
-    "seaborn",
-    "torch",
-]
-
-
-# ===================================================================
-#  追加の依存ライブラリ (開発・解析用)
-# ===================================================================
-[project.optional-dependencies]
-# 論文の図を作成するNotebook環境など、開発や解析時に使うライブラリ。
-# `pip install -e ".[dev]"` でインストールする。
-dev = [
-    "jupyterlab",
-    "ipykernel",
-    "black",
-    "ruff",
+    "accelerate>=1.12.0",
+    "altair>=6.0.0",
+    "autopep8>=2.3.2",
+    "captum>=0.8.0",
+    "cupy-cuda12x>=13.6.0",
+    "dask>=2025.12.0",
+    "datasets>=4.4.2",
+    "deepchem>=2.8.0",
+    "dvc>=3.64.2",
+    "einops>=0.8.1",
+    "evaluate>=0.4.6",
+    "fastparquet>=2025.12.0",
+    "flake8>=7.3.0",
+    "graphviz>=0.21",
+    "huggingface-hub>=0.36.0",
+    "leidenalg>=0.11.0",
+    "lightgbm>=4.6.0",
+    "lime>=0.2.0.1",
+    "matplotlib>=3.10.8",
+    "mlflow>=3.7.0",
+    "networkx>=3.6.1",
+    "nltk>=3.9.2",
+    "numpy>=1.26.4",
+    "nvidia-ml-py3>=7.352.0",
+    "openai>=2.14.0",
+    "optuna>=4.6.0",
+    "pandas>=2.3.3",
+    "peft>=0.18.0",
+    "pipdeptree>=2.30.0",
+    "plotly>=6.5.0",
+    "polars>=1.36.1",
+    "pubchempy>=1.0.5",
+    "pyarrow>=22.0.0",
+    "pysqlite3>=0.5.4",
+    "python-dateutil>=2.9.0.post0",
+    "python-igraph>=1.0.0",
+    "pytz>=2025.2",
+    "pyyaml>=6.0.3",
+    "rdkit>=2025.9.3",
+    "requests>=2.32.5",
+    "scikit-learn>=1.8.0",
+    "scipy>=1.16.3",
+    "seaborn>=0.13.2",
+    "sentencepiece>=0.2.1",
+    "slackweb>=1.0.5",
+    "spacy>=3.8.11",
+    "tensorboard>=2.20.0",
+    "torchaudio>=2.9.1",
+    "torchvision>=0.24.1",
+    "transformers>=4.57.3",
+    "voyager>=2.1.0",
+    "wandb>=0.23.1",
+    "xgboost>=3.1.2",
 ]

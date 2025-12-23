@@ -7,6 +7,8 @@ This module provides data loading and preprocessing utilities for Continual Pre-
 2. Tagged Entities (e.g., <E0>name</E0>): Requires tag stripping to restore original text.
 
 For 50% of the data, the code reverts the processed text back to its original raw form to create a mixed dataset.
+
+@Author: Mei Yoshikawa
 """
 
 import sqlite3

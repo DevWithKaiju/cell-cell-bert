@@ -8,6 +8,8 @@ It includes:
     1. RBERT: Implementation of R-BERT (Wu & He, 2019) using entity span averaging.
     2. CellRBERT: A variant using special tokens ([CELL0], [CELL1]) for entity representation.
     3. Factory Function: get_model_and_tokenizer to easily switch between architectures.
+
+@Author: Mei Yoshikawa
 """
 
 import torch

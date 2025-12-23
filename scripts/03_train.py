@@ -15,6 +15,8 @@ Usage:
     python scripts/03_train.py \
         --model_type R-ENT-base \
         --model_name "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext"
+
+@Author: Mei Yoshikawa
 """
 
 import sys

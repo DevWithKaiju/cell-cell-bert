@@ -10,6 +10,8 @@
 # Usage:
 #   1. Ensure your virtual environment is activated.
 #   2. Run: ./scripts/03_run_finetuning.sh
+# 
+# @Author: Mei Yoshikawa
 # ==============================================================================
 
 # Exit immediately if a command exits with a non-zero status.

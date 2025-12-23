@@ -7,6 +7,8 @@ This module provides utility functions for:
    - Strategy B: Entity Replacement (e.g., [CELL0])
 2. Training Helpers: 
    - Checkpoint management, model weight loading (safetensors/bin), and metric logging.
+
+@Author: Mei Yoshikawa
 """
 
 import glob

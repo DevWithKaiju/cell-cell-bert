@@ -13,6 +13,8 @@ Description:
 
 Usage:
     python 02_cpt.py --data_source semmed_db --data_path ./data.csv --db_path ./semmed.db
+
+@Author: Mei Yoshikawa
 """
 
 import sys

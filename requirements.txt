@@ -1,0 +1,80 @@
+# 基本ライブラリ
+numpy          # 数値計算
+pandas         # データ操作
+scipy          # 科学計算
+dask           # 分散処理対応のデータ操作
+polars         # 高速なデータフレーム操作
+fastparquet    # Parquet形式の高速入出力
+
+# 機械学習
+scikit-learn   # 機械学習
+xgboost        # 勾配ブースティング
+lightgbm       # 勾配ブースティング
+# catboost     # 勾配ブースティング (カテゴリカルデータ対応)　numpy==2 未対応
+optuna         # ハイパーパラメータチューニング
+
+# データ可視化
+matplotlib     # グラフ描画
+seaborn        # 統計的データ可視化
+plotly         # インタラクティブな可視化
+altair         # 宣言的なデータ可視化
+graphviz       # グラフ構造の描画
+
+# モデル解釈
+# shap         # SHAP値によるモデル解釈 numpy==2 未対応?
+lime           # LIMEによるモデル解釈
+captum         # PyTorchモデルの解釈と可視化
+
+# 自然言語処理
+spacy          # 自然言語処理
+nltk           # 自然言語処理
+sentencepiece  # テキスト分割
+transformers   # NLPモデル
+datasets       # データセット管理
+huggingface-hub # Hugging Face Hub
+evaluate       # モデル評価
+peft           # パラメータ効率的ファインチューニング
+accelerate     # 分散トレーニング
+
+# 実験追跡・ロギング
+wandb          # Weights & Biases
+tensorboard    # TensorBoard for PyTorch
+mlflow         # 実験管理
+
+# データセット処理
+pyarrow        # 高速データ処理
+pyyaml         # YAMLファイル処理
+pysqlite3 
+
+# 化学情報学（ケモインフォマティクス）
+rdkit          # ケモインフォマティクスライブラリ
+# openbabel      # 化学フォーマット変換 installが特殊？ → git clone 
+deepchem       # 深層学習を用いた化学モデリング
+pubchempy      # PubChem APIクライアント
+
+# ユーティリティ・管理
+flake8         # コード静的解析
+autopep8       # Pythonコード自動整形
+pytz           # タイムゾーン管理
+python-dateutil # 日時操作
+requests       # HTTPリクエスト
+slackweb       # Slack通知
+
+# 深層学習・高速化
+cupy-cuda12x   # GPU対応のNumPy互換ライブラリ
+einops         # テンソル操作
+torchvision    # PyTorch用画像データユーティリティ
+torchaudio     # PyTorch用音声データユーティリティ
+
+# グラフ構造・ネットワーク解析
+networkx       # グラフ理論解析
+python-igraph  # 高速グラフ解析
+
+# その他
+dvc            # データバージョン管理
+pipdeptree     # library version確認
+# MDAnalysis     # 分子動力学解析　→ openmmがcondaのみ対応
+nvidia-ml-py3  # GPU使用率の確認
+
+leidenalg
+voyager

@@ -12,6 +12,8 @@ It handles:
 It relies on:
     - src.models.get_model_and_tokenizer: For model initialization.
     - src.utils: For checkpoint management and evaluation helpers.
+
+@Author: Mei Yoshikawa
 """
 
 import os
