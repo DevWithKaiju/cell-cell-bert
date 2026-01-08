@@ -62,23 +62,10 @@ pip install git+https://github.com/mizuno-group/ccbert.git
 ├── pyproject.toml        
 └── README.md             
 ```
+-->
 
 ## Requirements
 All dependencies are listed in the pyproject.toml file.  
-
-## Installation for Reproducing the Results
-Clone this repository and install the required packages in editable mode. We recommend using a virtual environment.  
-
-```bash
-# Clone the repository
-git clone {repository_URL}
-cd {repository_name}
-
-# Install dependencies
-pip install -e .
-
-```
--->
 
 ## How to Cite
 If you find this work useful for your research, please consider citing our paper:  
