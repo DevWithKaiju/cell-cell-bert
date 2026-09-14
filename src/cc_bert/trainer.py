@@ -17,14 +17,15 @@ It relies on:
 """
 
 import os
+
 import glob
 import numpy as np
 import pandas as pd
 import evaluate
 from datasets import Dataset
 from transformers import (
-    Trainer, 
-    TrainingArguments, 
+    Trainer,
+    TrainingArguments,
     EarlyStoppingCallback,
     DataCollatorWithPadding
 )
@@ -32,8 +33,8 @@ from transformers import (
 # Import from local modules
 from .models import get_model_and_tokenizer
 from .utils import (
-    load_model_weights, 
-    evaluate_and_save_metrics, 
+    load_model_weights,
+    evaluate_and_save_metrics,
     cleanup_checkpoints
 )
 
@@ -54,7 +55,8 @@ def run_training(
     num_train_epochs = 20,
     weight_decay = 1e-4,
     dropout_rate = 0.1,
-    target_epochs = None
+    target_epochs = None,
+    save_best_model_weights = True
 ):
     """
     Executes the full training and evaluation pipeline.
@@ -75,11 +77,15 @@ def run_training(
         num_train_epochs (int): Max epochs.
         weight_decay (float): Weight decay.
         dropout_rate (float): Dropout rate.
+        target_epochs (list[int]): Specific epochs to evaluate and save metrics for.
+        save_best_model_weights (bool): If False, the best model's large weight files
+            (safetensors/bin, optimizer/scheduler/rng state) are removed after evaluation
+            to save disk space, keeping only the evaluation CSVs and training log.
     """
-    
+
     # 1. Initialize Model & Tokenizer
     print(f"\n[Info] Initializing model: {model_type} (Base: {model_name_or_path})")
-    
+
     model, tokenizer = get_model_and_tokenizer(
         model_type=model_type,
         model_name_or_path=model_name_or_path,
@@ -87,14 +93,20 @@ def run_training(
         dropout_rate=dropout_rate
     )
 
+    # Ensure label columns are strictly integer (int64) to prevent CrossEntropyLoss Float error
+    df_train["label"] = df_train["label"].astype(int)
+    df_eval["label"] = df_eval["label"].astype(int)
+    df_test["label"] = df_test["label"].astype(int)
+    df_pubmed["label"] = df_pubmed["label"].astype(int)
+
     # 2. Prepare Datasets
     print("[Info] Tokenizing datasets...")
-    
+
     def tokenize_fn(examples):
         return tokenizer(
-            examples["sentence"], 
-            truncation=True, 
-            padding="max_length", 
+            examples["sentence"],
+            truncation=True,
+            padding="max_length",
             max_length=256
         )
 
@@ -105,9 +117,9 @@ def run_training(
         "test_semmed": df_test,
         "test_pubmed": df_pubmed
     }
-    
+
     tokenized_datasets = {}
-    
+
     for name, df in datasets_map.items():
         ds = Dataset.from_pandas(df)
         tokenized_ds = ds.map(tokenize_fn, batched=True)
@@ -119,7 +131,7 @@ def run_training(
         output_dir=output_dir,
         eval_strategy="epoch",
         save_strategy="epoch",
-        save_total_limit=None,
+        save_total_limit=None if target_epochs else 2,
         logging_strategy="epoch",
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
@@ -129,12 +141,14 @@ def run_training(
         per_device_eval_batch_size=batch_size,
         learning_rate=learning_rate,
         weight_decay=weight_decay,
-        warmup_ratio=warmup_ratio,
+        # warmup_ratio is ignored when lr_scheduler_type="constant"
+        # warmup_ratio=warmup_ratio,
         seed=seed,
         data_seed=seed,
         log_level="info",
         report_to="none",
-        optim="schedule_free_radam"
+        optim="schedule_free_radam",
+        lr_scheduler_type="constant"
     )
 
     metric = evaluate.load("accuracy")
@@ -149,7 +163,7 @@ def run_training(
         args=training_args,
         train_dataset=tokenized_datasets["train"],
         eval_dataset=tokenized_datasets["eval"],
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         compute_metrics=compute_metrics,
         callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
     )
@@ -157,21 +171,21 @@ def run_training(
     # 4. Training
     print(f"[Info] Starting training in {output_dir}...")
     trainer.train()
-    
+
     # Save Best Model
     best_model_dir = os.path.join(output_dir, "best_model")
     trainer.save_model(best_model_dir)
-    
+
     # Save Training Log
     log_df = pd.DataFrame(trainer.state.log_history)
     log_df.to_csv(os.path.join(output_dir, "training_log.csv"), index=False)
 
     # 5. Evaluation Loop (Target Epochs & Best Model)
     steps_per_epoch = len(tokenized_datasets["train"]) // batch_size
-    
+
     # Find saved checkpoints
     saved_checkpoints = glob.glob(os.path.join(output_dir, "checkpoint-*"))
-    checkpoint_map = {} 
+    checkpoint_map = {}
     for cp_path in saved_checkpoints:
         try:
             step_num = int(cp_path.split("-")[-1])
@@ -192,25 +206,25 @@ def run_training(
     # A. Evaluate Target Epochs
     for ep in target_epochs:
         target_step = ep * steps_per_epoch
-        
+
         # Find the closest existing checkpoint step
         closest_step = None
         min_diff = float('inf')
-        
+
         for step in checkpoint_map.keys():
             # Allow slight deviation (e.g. due to gradient accumulation)
-            if abs(step - target_step) < (steps_per_epoch * 0.1) + 5: 
+            if abs(step - target_step) < (steps_per_epoch * 0.1) + 5:
                 if abs(step - target_step) < min_diff:
                     min_diff = abs(step - target_step)
                     closest_step = step
-        
+
         if closest_step is None:
             print(f"  - Epoch {ep} (Step ~{target_step}) not reached.")
             continue
-        
+
         cp_path = checkpoint_map[closest_step]
         kept_checkpoints.add(cp_path)
-        
+
         # Load weights and evaluate
         if load_model_weights(model, cp_path):
             for name, ds in eval_targets:
@@ -227,5 +241,31 @@ def run_training(
         print("  - Best model directory not found.")
 
     # 6. Cleanup
-    cleanup_checkpoints(output_dir, list(kept_checkpoints))
+    # All evaluations are done. We can safely remove ALL checkpoint-* directories
+    # to save disk space, leaving only the best_model and evaluation CSVs.
+    cleanup_checkpoints(output_dir, [])
+
+    # Clean up huge model weight files and optimizer states to save disk space after evaluation
+    print("[Info] Cleaning up huge model weights to save disk space...")
+    weight_files = [
+        "model.safetensors",
+        "pytorch_model.bin",
+        "optimizer.pt",
+        "scheduler.pt",
+        "rng_state.pth"
+    ]
+
+    # 1) Clean best model weights
+    if not save_best_model_weights:
+        for f in weight_files:
+            p = os.path.join(best_model_dir, f)
+            if os.path.exists(p):
+                os.remove(p)
+                print(f"  - Removed best model weight: {p}")
+    else:
+        print(f"  - Kept best model weights in {best_model_dir}")
+
+    # Note: kept checkpoints were already completely deleted above, so we don't need to
+    # individually remove their weight files anymore.
+
     print(f"[Info] Training finished. Results saved to {output_dir}")

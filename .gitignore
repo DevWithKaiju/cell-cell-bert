@@ -6,6 +6,9 @@
 /results/
 *.log
 
+# Container image (symlink to local build; rebuild via pyproject.toml/uv.lock instead)
+env.sif
+
 # Secrets and local settings
 .env
 .env.*
@@ -89,4 +92,5 @@ coverage.xml
 Thumbs.db
 ehthumbs.db
 ehthumbs_vista.db
-*.[Dd]esktop.ini
+*.[Dd]esktop.inidata/test.ipynb
+data/API

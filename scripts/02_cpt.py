@@ -1,18 +1,23 @@
 """
-train_cpt.py
+scripts/02_cpt.py
 
 Description:
     Main script for running Continual Pre-training (CPT) using Masked Language Modeling (MLM).
     It utilizes the PubMedBERT model and fine-tunes it on domain-specific biomedical text.
-    
+
     This script handles:
-    1. Dynamic data loading from mixed sources (DB/CSV) via `src.ccbert.data_cpt`.
-    2. Tokenizer adaptation with custom cell-related tokens.
+    1. Dynamic data loading from mixed sources (DB/CSV) via `src.cc_bert.data_cpt`.
+    2. Tokenizer adaptation with custom cell-related tokens (skippable via --strip_tags_only
+       for a fully tag-free CPT variant).
     3. MLM training with schedule-free RAdam optimizer and Early Stopping.
     4. Comprehensive logging of training metrics and loss curves.
 
 Usage:
-    python 02_cpt.py --data_source semmed_db --data_path ./data.csv --db_path ./semmed.db
+    # Mixed corpus (default): 50% of samples reverted to raw text, special tokens registered
+    python 02_cpt.py --data_source replacement --data_path ./data.csv --db_path ./semmed.db
+
+    # Fully tag-free CPT: all samples reverted, no special tokens registered
+    python 02_cpt.py --data_source boundary --data_path ./data.csv --strip_tags_only
 
 @Author: Mei Yoshikawa
 """
@@ -51,7 +56,14 @@ def parse_args():
                         help="Data loading strategy identifier")
     parser.add_argument("--data_path", type=str, required=True, help="Path to the main CSV dataset")
     parser.add_argument("--db_path", type=str, default=None, help="Path to SQLite DB (required for 'replacement')")
-    
+    parser.add_argument(
+        "--strip_tags_only", action="store_true",
+        help="Revert entity markup for the whole corpus (frac=1.0) and skip registering "
+             "[CELL0]/[CELL1] or <E0>/<E1> as special tokens, so the model is trained on "
+             "plain, entity-marker-free text throughout. Default behavior keeps the original "
+             "mixed setup: 50%% of samples reverted, special tokens registered for the rest."
+    )
+
     # Hyperparameters
     parser.add_argument("--lr", type=float, default=2e-5, help="Learning rate")
     parser.add_argument("--batch_size", type=int, default=128, help="Per-device train batch size")
@@ -74,26 +86,32 @@ def main():
 
     # 1. Tokenizer Setup
     tokenizer = BertTokenizerFast.from_pretrained(args.model_name)
-    
-    # Add special tokens for cell entities and tags
+
+    # Add special tokens for cell entities and tags.
+    # Skipped entirely when --strip_tags_only is set: the corpus is fully tag-free in that mode,
+    # so there is nothing for these tokens to represent (see src/cc_bert/data_cpt.py frac=1.0 below).
     special_tokens = []
-    if args.data_source == "replacement":
-        # Strategy: Replacement (Entities are replaced with [CELL0], [CELL1])
-        special_tokens = ['[CELL0]', '[CELL1]']
-    elif args.data_source == "boundary":
-        # Strategy: Boundary (Entities are wrapped with <E0>...</E0>)
-        special_tokens = ['<E0>', '</E0>', '<E1>', '</E1>']
-    
+    if not args.strip_tags_only:
+        if args.data_source == "replacement":
+            # Strategy: Replacement (Entities are replaced with [CELL0], [CELL1])
+            special_tokens = ['[CELL0]', '[CELL1]']
+        elif args.data_source == "boundary":
+            # Strategy: Boundary (Entities are wrapped with <E0>...</E0>)
+            special_tokens = ['<E0>', '</E0>', '<E1>', '</E1>']
+
     if special_tokens:
         tokenizer.add_special_tokens({'additional_special_tokens': special_tokens})
         print(f"Added special tokens for '{args.data_source}': {special_tokens}")
+    else:
+        print("No special tokens registered (strip_tags_only mode or none required).")
 
     # 2. Data Loading & Preprocessing
     dataset = load_cpt_dataset(
         data_source=args.data_source,
         data_path=args.data_path,
         db_path=args.db_path,
-        seed=args.seed
+        seed=args.seed,
+        frac=1.0 if args.strip_tags_only else 0.5
     )
     
     def tokenize_function(examples):
@@ -132,8 +150,7 @@ def main():
     training_args = TrainingArguments(
         output_dir=output_dir,
         logging_dir=logging_dir,
-        overwrite_output_dir=True,
-        
+
         # Training Parameters
         num_train_epochs=args.max_epochs,
         per_device_train_batch_size=args.batch_size,

@@ -15,9 +15,9 @@ It includes:
 import torch
 from torch import nn
 from transformers import (
-    AutoTokenizer, 
-    AutoModelForSequenceClassification, 
-    BertTokenizerFast, 
+    AutoTokenizer,
+    AutoModelForSequenceClassification,
+    BertTokenizerFast,
     BertModel
 )
 
@@ -50,25 +50,27 @@ class FCLayer(nn.Module):
 class RBERT(nn.Module):
     """
     R-BERT model for Relation Extraction.
-    
+
     This model extracts relation features by concatenating:
-    1. The [CLS] token embedding (sentence representation).
+    1. The [CLS] token embedding (sentence representation) -- only when use_cls=True.
     2. The averaged embedding of the first entity span (<E0>...</E0>).
     3. The averaged embedding of the second entity span (<E1>...</E1>).
-    
+
     Reference:
-        Wu, S. & He, Y. (2019). Enriching Pre-trained Language Model with Entity Information 
+        Wu, S. & He, Y. (2019). Enriching Pre-trained Language Model with Entity Information
         for Relation Classification. CIKM.
     """
-    def __init__(self, bert_model, tokenizer, num_labels, dropout_rate=0.1):
+    def __init__(self, bert_model, tokenizer, num_labels, dropout_rate=0.1, use_cls=True):
         """
         Args:
             bert_model (PreTrainedModel): Loaded BERT-based model (e.g., PubMedBERT).
             tokenizer (PreTrainedTokenizer): Tokenizer corresponding to the model.
             num_labels (int): Number of classification labels.
             dropout_rate (float): Dropout probability.
+            use_cls (bool): If True, use [CLS] embedding along with entity embeddings. If False, only use entity embeddings.
         """
         super().__init__()
+        self.use_cls = use_cls
         self.bert = bert_model
         self.tokenizer = tokenizer
         self.num_labels = num_labels
@@ -84,40 +86,41 @@ class RBERT(nn.Module):
         # FC Layers for projection
         self.cls_fc_layer = FCLayer(self.hidden_size, self.hidden_size, dropout_rate)
         self.entity_fc_layer = FCLayer(self.hidden_size, self.hidden_size, dropout_rate)
-        self.label_classifier = FCLayer(self.hidden_size * 3, num_labels, dropout_rate, use_activation=False)
+        classifier_input_dim = self.hidden_size * 3 if self.use_cls else self.hidden_size * 2
+        self.label_classifier = FCLayer(classifier_input_dim, num_labels, dropout_rate, use_activation=False)
 
     def extract_range_avg(self, input_ids, sequence_output, start_id, end_id):
         """
         Extracts and averages the embeddings between start_id and end_id tokens.
-        
+
         Args:
             input_ids (torch.Tensor): (batch_size, seq_len)
             sequence_output (torch.Tensor): (batch_size, seq_len, hidden_size)
             start_id (int): Token ID for the start tag.
             end_id (int): Token ID for the end tag.
-            
+
         Returns:
             torch.Tensor: Averaged embeddings of shape (batch_size, hidden_size).
         """
         batch_size, seq_len = input_ids.shape
         hidden = sequence_output.shape[-1]
         result = []
-        
+
         for b in range(batch_size):
             ids = input_ids[b]
             # Find indices of start and end tags
             start_idx = (ids == start_id).nonzero(as_tuple=True)[0]
             end_idx   = (ids == end_id).nonzero(as_tuple=True)[0]
-            
+
             # Handle cases where tags are missing or malformed
             if len(start_idx) == 0 or len(end_idx) == 0:
                 result.append(torch.zeros(hidden, device=sequence_output.device))
                 continue
-            
+
             # Use the first occurrence of the tags
             s = start_idx[0].item()
             e = end_idx[0].item()
-            
+
             # If the span is empty or invalid (e.g., <E0></E0> adjacent), return zero vector
             if e - s <= 1:
                 result.append(torch.zeros(hidden, device=sequence_output.device))
@@ -126,7 +129,7 @@ class RBERT(nn.Module):
                 vecs = sequence_output[b, s+1 : e]
                 avg = vecs.mean(dim=0)
                 result.append(avg)
-                
+
         return torch.stack(result, dim=0)
 
     def forward(self, input_ids, attention_mask=None, token_type_ids=None, labels=None):
@@ -139,13 +142,17 @@ class RBERT(nn.Module):
         e1_avg = self.extract_range_avg(input_ids, sequence_output, self.e1_start, self.e1_end)
 
         # Apply FC layers
-        cls_embed = self.cls_fc_layer(pooled_output)
         e0_embed = self.entity_fc_layer(e0_avg)
         e1_embed = self.entity_fc_layer(e1_avg)
 
-        # Concatenate: [CLS; Entity1; Entity2] -> (batch_size, hidden_size * 3)
-        concat = torch.cat([cls_embed, e0_embed, e1_embed], dim=1)
-        
+        if self.use_cls:
+            cls_embed = self.cls_fc_layer(pooled_output)
+            # Concatenate: [CLS; Entity1; Entity2] -> (batch_size, hidden_size * 3)
+            concat = torch.cat([cls_embed, e0_embed, e1_embed], dim=1)
+        else:
+            # Concatenate: [Entity1; Entity2] -> (batch_size, hidden_size * 2)
+            concat = torch.cat([e0_embed, e1_embed], dim=1)
+
         # Classification
         logits = self.label_classifier(concat)
 
@@ -159,24 +166,26 @@ class RBERT(nn.Module):
 class CellRBERT(nn.Module):
     """
     Proposed variant of R-BERT using special tokens ([CELL0], [CELL1]) for entity representation.
-    
-    Instead of averaging the span between tags, this model uses the embedding of 
+
+    Instead of averaging the span between tags, this model uses the embedding of
     specific placeholder tokens inserted into the sequence.
     """
-    def __init__(self, bert_model, tokenizer, num_labels, dropout_rate=0.1):
+    def __init__(self, bert_model, tokenizer, num_labels, dropout_rate=0.1, use_cls=True):
         super().__init__()
+        self.use_cls = use_cls
         self.bert = bert_model
         self.tokenizer = tokenizer
         self.num_labels = num_labels
         self.hidden_size = self.bert.config.hidden_size
-        
+
         # Target token IDs for entities
         self.cell0_id = self.tokenizer.convert_tokens_to_ids('[CELL0]')
         self.cell1_id = self.tokenizer.convert_tokens_to_ids('[CELL1]')
-        
+
         self.cls_fc_layer = FCLayer(self.hidden_size, self.hidden_size, dropout_rate)
         self.entity_fc_layer = FCLayer(self.hidden_size, self.hidden_size, dropout_rate)
-        self.label_classifier = FCLayer(self.hidden_size * 3, num_labels, dropout_rate, use_activation=False)
+        classifier_input_dim = self.hidden_size * 3 if self.use_cls else self.hidden_size * 2
+        self.label_classifier = FCLayer(classifier_input_dim, num_labels, dropout_rate, use_activation=False)
 
     def extract_token_avg(self, input_ids, sequence_output, target_token_id):
         """
@@ -186,11 +195,11 @@ class CellRBERT(nn.Module):
         batch_size, seq_len = input_ids.shape
         hidden = sequence_output.shape[-1]
         result = []
-        
+
         for b in range(batch_size):
             # Find indices where the token matches the target ID
             indices = (input_ids[b] == target_token_id).nonzero(as_tuple=True)[0]
-            
+
             if len(indices) == 0:
                 result.append(torch.zeros(hidden, device=sequence_output.device))
             else:
@@ -198,7 +207,7 @@ class CellRBERT(nn.Module):
                 vecs = sequence_output[b, indices]
                 avg = vecs.mean(dim=0)
                 result.append(avg)
-                
+
         return torch.stack(result, dim=0)
 
     def forward(self, input_ids, attention_mask=None, token_type_ids=None, labels=None):
@@ -211,12 +220,16 @@ class CellRBERT(nn.Module):
         e1_avg = self.extract_token_avg(input_ids, sequence_output, self.cell1_id)
 
         # Apply FC layers
-        cls_embed = self.cls_fc_layer(pooled_output)
         e0_embed = self.entity_fc_layer(e0_avg)
         e1_embed = self.entity_fc_layer(e1_avg)
 
-        # Concatenate and Classify
-        concat = torch.cat([cls_embed, e0_embed, e1_embed], dim=1)
+        if self.use_cls:
+            cls_embed = self.cls_fc_layer(pooled_output)
+            concat = torch.cat([cls_embed, e0_embed, e1_embed], dim=1)
+        else:
+            concat = torch.cat([e0_embed, e1_embed], dim=1)
+
+        # Classify
         logits = self.label_classifier(concat)
 
         loss = None
@@ -229,7 +242,7 @@ class CellRBERT(nn.Module):
 def get_model_and_tokenizer(model_type, model_name_or_path, num_labels, dropout_rate=0.1):
     """
     Factory function to initialize the appropriate model and tokenizer.
-    
+
     This function handles:
       1. Tokenizer loading.
       2. Special token registration based on the selected strategy (Boundary vs. Replacement).
@@ -237,11 +250,12 @@ def get_model_and_tokenizer(model_type, model_name_or_path, num_labels, dropout_
 
     Args:
         model_type (str): The specific experimental setting.
-            - "B-ENT": R-BERT Architecture + Boundary Tags (<E0>).
-            - "R-ENT": Cell-RBERT Architecture + Replacement Tokens ([CELL0]).
+            - "B-HYB"/"R-HYB": R-BERT/Cell-RBERT architecture, using [CLS] + both entity embeddings.
+            - "B-ENT": R-BERT Architecture + Boundary Tags (<E0>), entity embeddings only.
+            - "R-ENT": Cell-RBERT Architecture + Replacement Tokens ([CELL0]), entity embeddings only.
             - "R-CLS": Standard BERT Classification + Replacement Tokens ([CELL0]).
             - "B-CLS": Standard BERT Classification + Boundary Tags (<E0>).
-        
+
         model_name_or_path (str): Path to the pretrained model (e.g., "microsoft/BiomedNLP-PubMedBERT...").
         num_labels (int): Number of classification labels.
         dropout_rate (float): Dropout probability for the classification head.
@@ -254,9 +268,11 @@ def get_model_and_tokenizer(model_type, model_name_or_path, num_labels, dropout_
     # Define special tokens for each strategy
     boundary_tokens = ['<E0>', '<E1>', '</E0>', '</E1>']
     cell_tokens     = ['[CELL0]', '[CELL1]']
-    
+
     # Map model_type to its required tokens
     token_config = {
+        "B-HYB": boundary_tokens,
+        "R-HYB": cell_tokens,
         "B-ENT": boundary_tokens,
         "R-ENT": cell_tokens,
         "R-CLS": cell_tokens,
@@ -269,35 +285,58 @@ def get_model_and_tokenizer(model_type, model_name_or_path, num_labels, dropout_
 
     # 2. Tokenizer Setup (Common Logic)
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
-    
+
     required_tokens = token_config[model_type]
-    
+
     # Add special tokens only if they are not already in the vocabulary
-    if not all(t in tokenizer.additional_special_tokens for t in required_tokens):
+    if not all(t in tokenizer.all_special_tokens for t in required_tokens):
         tokenizer.add_special_tokens({'additional_special_tokens': required_tokens})
-    
+
     vocab_size = len(tokenizer)
 
     # 3. Model Initialization (Branch by Architecture)
-    
+
     # Group A: Custom R-BERT Architectures
-    if model_type in ["R-ENT", "B-ENT"]:
+    if model_type in ["B-HYB", "R-HYB", "B-ENT", "R-ENT"]:
         base_model = BertModel.from_pretrained(model_name_or_path)
         base_model.resize_token_embeddings(vocab_size)
-        
-        if model_type == "B-ENT":
-            model = RBERT(base_model, tokenizer, num_labels, dropout_rate)
+
+        use_cls = (model_type in ["B-HYB", "R-HYB"])
+
+        if model_type in ["B-HYB", "B-ENT"]:
+            model = RBERT(base_model, tokenizer, num_labels, dropout_rate, use_cls=use_cls)
         else:
-            model = CellRBERT(base_model, tokenizer, num_labels, dropout_rate)
+            model = CellRBERT(base_model, tokenizer, num_labels, dropout_rate, use_cls=use_cls)
 
     # Group B: Standard Classification Architectures
     elif model_type in ["R-CLS", "B-CLS"]:
+        from transformers import AutoConfig
+        config = AutoConfig.from_pretrained(model_name_or_path, num_labels=num_labels)
+
+        # Safely set dropout rates if supported by the model config
+        # (not every architecture -- e.g. ModernBERT -- exposes all three of these)
+        if hasattr(config, "hidden_dropout_prob"):
+            config.hidden_dropout_prob = dropout_rate
+        if hasattr(config, "attention_probs_dropout_prob"):
+            config.attention_probs_dropout_prob = dropout_rate
+        if hasattr(config, "classifier_dropout"):
+            config.classifier_dropout = dropout_rate
+
         model = AutoModelForSequenceClassification.from_pretrained(
             model_name_or_path,
-            num_labels=num_labels,
-            hidden_dropout_prob=dropout_rate,
-            attention_probs_dropout_prob=dropout_rate
+            config=config
         )
         model.resize_token_embeddings(vocab_size)
+
+    # 4. Contiguous Hack for safetensors compatibility
+    # Ensure all tensors in state_dict are contiguous to avoid ValueError during saving
+    import types
+    original_state_dict = model.state_dict
+    def custom_state_dict(self, *args, **kwargs):
+        sd = original_state_dict(*args, **kwargs)
+        for k, v in sd.items():
+            sd[k] = v.contiguous()
+        return sd
+    model.state_dict = types.MethodType(custom_state_dict, model)
 
     return model, tokenizer
