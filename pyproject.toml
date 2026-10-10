@@ -70,7 +70,12 @@ dependencies = [
     "schedulefree>=1.4",
     "statsmodels",
     "thinc>=8.3",
+    "openai",
 ]
+
+[project.optional-dependencies]
+# only needed for scripts/04_run_decoder_eval.py --model gemini-...
+gemini = ["google-generativeai"]
 
 # pytorch index url
 [[tool.uv.index]]

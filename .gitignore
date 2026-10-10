@@ -14,6 +14,9 @@ env.sif
 .env.*
 local_settings.py
 
+# 検証用ノートブック（APIキー等の秘密情報が実行結果セルに紛れ込みやすいため追跡しない）
+data/test.ipynb
+
 
 # ===================================================================
 #  Virtual environments

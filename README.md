@@ -32,37 +32,98 @@ Please refer to the model cards on Hugging Face for:
 - intended usage
 - citation information
 
-This GitHub repository provides the datasets, training code,
-and evaluation pipeline used in the study.
+This GitHub repository provides the data-reconstruction, training, and
+evaluation code used in the study, so that results can be reproduced starting
+from the **published dataset** (offsets only, no raw text -- see below) rather
+than our private raw corpora.
+
+## Dataset
+
+The annotated (sentence, entity pair, label) data is published as
+[`DevWithKaiju/cell-cell-communication`](https://huggingface.co/datasets/DevWithKaiju/cell-cell-communication)
+on the Hugging Face Hub, as character offsets (no raw sentence text, for
+licensing reasons). See that dataset's README for the exact schema; this
+repository's `scripts/01_reconstruct_dataset.py` turns those offsets back into
+sentence-level training/eval CSVs.
 
 ## Installation
-*(Code release coming soon)*
-
-Install the latest version directly from the GitHub repository:
 
 ```bash
-pip install git+https://github.com/mizuno-group/ccbert.git
+git clone https://github.com/mizuno-group/cell-cell-bert.git
+cd cell-cell-bert
+uv sync
 ```
 
-<!--
+## Reproducing results from the published dataset
+
+The offset-only dataset does not include raw sentence text (licensing), so
+reconstructing it requires two external sources:
+- the **PubMed annual baseline** (public, fetched directly by this code), for
+  `pubmed_relations` and `cpt_relations`
+- a local copy of **SemMedDB** (requires a separate license from NLM), for
+  `semmed_relations`
+
+```bash
+# 1. PubMed: download the baseline and build a local abstract index
+#    (--limit N for a quick smoke test; omit it for the full ~40GB download)
+python scripts/00_download_pubmed_baseline.py --limit 5
+python scripts/00_build_pubmed_index.py
+
+# 2. SemMed: build a local sentence index from your own SemMedDB download
+python scripts/00_build_semmed_index.py \
+    --predication /path/to/PREDICATION.csv.gz \
+    --sentence /path/to/SENTENCE.csv.gz \
+    --predication_aux /path/to/PREDICATION_AUX.csv.gz
+
+# 3. Reconstruct the sentence-level CSVs (spot-check first with --sample_check)
+python scripts/01_reconstruct_dataset.py --sample_check 5
+python scripts/01_reconstruct_dataset.py
+
+# 4. Continued pretraining (optional -- the pretrained checkpoints are also
+#    published directly, see "Models" above)
+python scripts/02_run_cpt.py --strategy replacement
+
+# 5. Fine-tuning
+python scripts/03_run_finetune.py --model_type R-HYB-CPT \
+    --cpt_model_path mizuno-group/ccbert-R-pretrained --seed 22
+
+# 6. Zero/few-shot LLM evaluation
+python scripts/04_run_decoder_eval.py --model gpt-4.1 --prompt_style fewshot
+
+# 7. LoRA SFT of a decoder model
+python scripts/05_run_lora_sft.py --presentation replacement --prompt_style fewshot --seed 22
+```
+
+See each module's docstring (`src/cc_bert/`, `src/cc_gemma/`) for details,
+including the one reproducibility gap: the original CPT run for the
+replacement-token models (`ccbert-R-*`) mixed in sentences from a broader,
+unpublished corpus for half of its examples; that half cannot be reproduced
+bit-for-bit from the published dataset alone (see `src/cc_bert/cpt.py`).
+
 ## Directory Structure
 ```
 .
-├── notebooks/            # example notebooks
-│   └── usage_example.ipynb
+├── scripts/                  # CLI entry points (run these)
+│   ├── 00_download_pubmed_baseline.py
+│   ├── 00_build_pubmed_index.py
+│   ├── 00_build_semmed_index.py
+│   ├── 01_reconstruct_dataset.py
+│   ├── 02_run_cpt.py
+│   ├── 03_run_finetune.py
+│   ├── 04_run_decoder_eval.py
+│   └── 05_run_lora_sft.py
 ├── src/
-│   └── my_project/       # source codes
-│       ├── init.py
-│       ├── cli.py        # CLI entry point
-│       └── core.py
-├── tests/                # test codes
-│   └── test_module.py
+│   ├── cc_bert/               # BERT-based models: reconstruction, CPT, fine-tuning
+│   └── cc_gemma/               # decoder-based (LLM) prompts, zero/few-shot eval, LoRA SFT
+├── notebooks/
+│   └── make_figures.ipynb     # paper figure generation
+├── data/                      # reconstructed data (written by 01_reconstruct_dataset.py)
+├── results/                   # training/eval outputs
 ├── .gitignore
-├── LICENSE               
-├── pyproject.toml        
-└── README.md             
+├── LICENSE
+├── pyproject.toml
+└── README.md
 ```
--->
 
 ## Requirements
 All dependencies are listed in the pyproject.toml file.  
